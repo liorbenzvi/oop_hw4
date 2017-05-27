@@ -1,7 +1,15 @@
 package OOP.Solution.Trait;
 
+import OOP.Provided.Trait.OOPBadClass;
+import OOP.Provided.Trait.OOPTraitConflict;
 import OOP.Provided.Trait.OOPTraitException;
+import OOP.Provided.Trait.OOPTraitMissingImpl;
+
 import java.io.File;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class OOPTraitControl {
 
@@ -21,8 +29,84 @@ public class OOPTraitControl {
     }
 
     //TODO: fill in here :
-    public Object invoke(String methodName, Object[] args)
-            throws OOPTraitException {
+    public Object invoke(String methodName, Object[] args) throws OOPTraitException {
+        Object obj = null; //TODO - how to find obj?
+        Class<?>[] paramTypes = new Class[args.length];
+        for (int i = 0; i < args.length; i++) {
+            paramTypes[i] = args[i].getClass();
+        }
+        Method method = null;
+        try {
+            method = traitCollector.getMethod(methodName, paramTypes);
+        } catch (Exception e){ return null; }
+
+        OOPTraitMethod annotation = method.getAnnotation(OOPTraitMethod.class);
+        if (annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
+            try {
+                return method.invoke(obj, args);
+            } catch (Exception e){ return null; }
+        }
+
+        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)){
+            OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
+            try {
+                Method newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
+                return newImpl.invoke(obj, args);
+            }catch (Exception e) {
+                throw new OOPBadClass(method);
+            }
+            }
+
+        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS)){
+
+            List<Class> interfaces = Arrays.asList(traitCollector.getInterfaces());
+            List<Class> nextLevel = new ArrayList<>();
+            boolean find_imp = false;
+            Method realImpl = null;
+            Method newImpl = null;
+
+            while (!interfaces.isEmpty()) {
+                try {
+                    for (Class i : interfaces) {
+                        try {
+                            newImpl = i.getMethod(methodName, paramTypes);
+                        } catch (Exception e){ continue; }
+                        OOPTraitMethod newAnnotation = method.getAnnotation(OOPTraitMethod.class);
+
+                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
+                            if (find_imp) {
+                                throw new OOPTraitConflict(method);
+                            }
+                            find_imp = true;
+                            realImpl = newImpl;
+                            continue;
+                        }
+
+                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)) {
+                            OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
+                            newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
+                            if (find_imp) {
+                                throw new OOPTraitConflict(method);
+                            }
+                            find_imp = true;
+                            realImpl = newImpl;
+                            continue;
+                        }
+                        nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                    }
+                    if(find_imp){
+                        return realImpl.invoke(obj, args);
+                    }
+                    interfaces.clear();
+                    interfaces.addAll(nextLevel);
+                    nextLevel.clear();
+                } catch (Exception e) {
+                }
+            }
+            if (realImpl == null){
+                throw new OOPTraitMissingImpl(method);
+            }
+        }
         return null;
     }
 
