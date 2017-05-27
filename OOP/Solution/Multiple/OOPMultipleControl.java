@@ -1,7 +1,14 @@
 package OOP.Solution.Multiple;
 
+import OOP.Provided.Multiple.OOPInherentAmbiguity;
 import OOP.Provided.Multiple.OOPMultipleException;
 import java.io.File;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import OOP.Provided.Multiple.OOPBadClass;
 
 public class OOPMultipleControl {
 
@@ -17,6 +24,32 @@ public class OOPMultipleControl {
 
     //TODO: fill in here :
     public void validateInheritanceGraph() throws OOPMultipleException {
+
+        List<Class> interfaces = Arrays.asList(interfaceClass.getInterfaces());
+        HashSet<Class> visited = new HashSet<>();
+        List<Class> newInterfaces = new ArrayList<>();
+
+        while (!interfaces.isEmpty()){
+            for (Class i : interfaces) {
+                if (!Arrays.asList(i.getAnnotations()).contains(OOPMultipleInterface.class)){
+                    throw new OOPBadClass(i);
+                }
+                for(Method m : i.getDeclaredMethods()){
+                    if (!Arrays.asList(m.getAnnotations()).contains(OOPMultipleMethod.class)){
+                        throw new OOPBadClass(m);
+                    }
+                }
+                if (visited.contains(i) && i.getMethods().length != 0) {
+                    throw new OOPInherentAmbiguity(interfaceClass, i, i.getMethods()[0]);
+                }
+                newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
+                visited.add(i);
+            }
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
+        }
+
 
     }
 
