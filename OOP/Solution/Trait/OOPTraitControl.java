@@ -6,9 +6,12 @@ import OOP.Provided.Trait.OOPTraitException;
 import OOP.Provided.Trait.OOPTraitMissingImpl;
 
 import java.io.File;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 public class OOPTraitControl {
@@ -25,6 +28,38 @@ public class OOPTraitControl {
 
     //TODO: fill in here :
     public void validateTraitLayout() throws OOPTraitException {
+
+
+        List<Class> interfaces = Arrays.asList(traitCollector.getInterfaces());
+        HashSet<Class> visited = new HashSet<>();
+        List<Class> newInterfaces = new ArrayList<>();
+
+        while (!interfaces.isEmpty()){
+            for (Class i : interfaces) {
+                if (!Arrays.asList(i.getAnnotations()).contains(OOPTraitBehaviour.class)){
+                    throw new OOPBadClass(i);
+                }
+                for(Method m : i.getDeclaredMethods()){
+                    List<?> annotations = Arrays.asList(m.getAnnotations());
+                    if (!annotations.contains(OOPTraitMethod.class)){
+                        throw new OOPBadClass(m);
+                    }else{
+                        OOPTraitMethod anno =  m.getAnnotation(OOPTraitMethod.class);
+                        if(anno.modifier() == OOPTraitMethodModifier.INTER_CONFLICT){
+                            if (!annotations.contains(OOPTraitConflictResolver.class)){
+                                throw new OOPBadClass(m);
+                            }
+                        }
+                    }
+                }
+                newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
+                visited.add(i);
+            }
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
+        }
+
 
     }
 
