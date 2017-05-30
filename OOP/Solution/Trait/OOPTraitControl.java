@@ -9,10 +9,7 @@ import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 
 public class OOPTraitControl {
 
@@ -26,28 +23,93 @@ public class OOPTraitControl {
         this.sourceFile = sourceFile;
     }
 
+    boolean checkInClass(Class in,Method me){
+        String inName = in.getName();
+        StringBuilder klassName = new StringBuilder(inName);
+        klassName.setCharAt(inName.length()-2, 'C');
+        Method classMethod;
+        Class klass;
+        OOPTraitMethod newAnnotation;
+        try{
+            klass = Class.forName(klassName.toString());
+        }catch(Exception e){ return false;}
+        try{
+            classMethod = klass.getMethod(me.getName(),me.getParameterTypes());
+        } catch(Exception e){ return false;}
+        try {
+            newAnnotation = classMethod.getAnnotation(OOPTraitMethod.class);
+        } catch(Exception e){ return false;}
+        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
+            return true;
+        }
+        return false;
+    }
+
+    boolean findRealImpl(Method me){
+        List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
+        List<Class> nextLevel = new ArrayList<>();
+        Method newImpl = null;
+        String methodName = me.getName();
+        Class[] paramTypes = me.getParameterTypes();
+        while (!interfaces.isEmpty()) {
+            try {
+                for (Class i : interfaces) {
+                    try {
+                        newImpl = i.getMethod(methodName, paramTypes);
+                    } catch (Exception e){
+                        if(checkInClass(i,me)) return true;
+                        continue; }
+                    OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
+
+                    if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
+                        return true;
+                    }
+                    nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                }
+                interfaces.clear();
+                interfaces.addAll(nextLevel);
+                nextLevel.clear();
+            } catch (Exception e) {}
+        }
+        return false;
+    }
+
+    boolean isAbs(Method me){
+        if (!me.isAnnotationPresent(OOPTraitBehaviour.class)) return false;
+        OOPTraitMethodModifier val = me.getAnnotation(OOPTraitMethod.class).modifier();
+        if (val == OOPTraitMethodModifier.INTER_ABS ) return true;
+        return false;
+    }
+
+    void checkAllAbs(Class c)throws OOPTraitException{
+        Method[] absMethods = Arrays.stream(c.getMethods()).
+                filter(me -> isAbs(me)).toArray(Method[]::new);
+        for (Method me : absMethods){
+            if(!findRealImpl(me)) throw new OOPTraitMissingImpl(me);
+        }
+    }
+
     //TODO: fill in here :
     public void validateTraitLayout() throws OOPTraitException {
-
-
-        List<Class> interfaces = Arrays.asList(traitCollector.getInterfaces());
+        List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
         HashSet<Class> visited = new HashSet<>();
         List<Class> newInterfaces = new ArrayList<>();
-
-        while (!interfaces.isEmpty()){
+        try{ checkAllAbs(traitCollector);} catch(OOPTraitException e){throw e;}
+            while (!interfaces.isEmpty()){
             for (Class i : interfaces) {
-                if (!Arrays.asList(i.getAnnotations()).contains(OOPTraitBehaviour.class)){
+                try{ checkAllAbs(i);} catch(OOPTraitException e){throw e;}
+                if (!i.isAnnotationPresent(OOPTraitBehaviour.class)){
+
                     throw new OOPBadClass(i);
                 }
                 for(Method m : i.getDeclaredMethods()){
-                    List<?> annotations = Arrays.asList(m.getAnnotations());
-                    if (!annotations.contains(OOPTraitMethod.class)){
+                    if (!m.isAnnotationPresent(OOPTraitMethod.class)){
                         throw new OOPBadClass(m);
                     }else{
                         OOPTraitMethod anno =  m.getAnnotation(OOPTraitMethod.class);
                         if(anno.modifier() == OOPTraitMethodModifier.INTER_CONFLICT){
-                            if (!annotations.contains(OOPTraitConflictResolver.class)){
-                                throw new OOPBadClass(m);
+                            if (!m.isAnnotationPresent(OOPTraitConflictResolver.class)){
+                                throw new OOPTraitConflict(m);
                             }
                         }
                     }
@@ -59,8 +121,6 @@ public class OOPTraitControl {
             interfaces.addAll(newInterfaces);
             newInterfaces.clear();
         }
-
-
     }
 
     //TODO: fill in here :
