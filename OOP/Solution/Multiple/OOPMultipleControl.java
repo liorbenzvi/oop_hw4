@@ -77,7 +77,7 @@ public class OOPMultipleControl {
         List<Class> newInterfaces = new LinkedList<>();
         ArrayList<Pair<Class<?>, Method>> candidates = new ArrayList<>();
         if(args == null) args = new Object[0];
-        Class[] cArgs = Arrays.stream(args).map(arg -> arg.getClass()).toArray(Class[]::new);;
+        Class[] cArgs = Arrays.stream(args).map(arg -> arg.getClass()).toArray(Class[]::new);
 
         while (!interfaces.isEmpty()){
             for (Class in : interfaces){
