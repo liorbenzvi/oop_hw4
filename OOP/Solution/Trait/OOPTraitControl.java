@@ -6,8 +6,6 @@ import OOP.Provided.Trait.OOPTraitException;
 import OOP.Provided.Trait.OOPTraitMissingImpl;
 
 import java.io.File;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.*;
 
@@ -125,7 +123,6 @@ public class OOPTraitControl {
 
     //TODO: fill in here :
     public Object invoke(String methodName, Object[] args) throws OOPTraitException {
-        Object obj = null; //TODO - how to find obj?
         Class<?>[] paramTypes = new Class[args.length];
         for (int i = 0; i < args.length; i++) {
             paramTypes[i] = args[i].getClass();
@@ -138,7 +135,7 @@ public class OOPTraitControl {
         OOPTraitMethod annotation = method.getAnnotation(OOPTraitMethod.class);
         if (annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
             try {
-                return method.invoke(obj, args);
+                return method.invoke(traitCollector, args);
             } catch (Exception e){ return null; }
         }
 
@@ -146,19 +143,20 @@ public class OOPTraitControl {
             OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
             try {
                 Method newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
-                return newImpl.invoke(obj, args);
+                return newImpl.invoke(traitCollector, args);
             }catch (Exception e) {
                 throw new OOPBadClass(method);
             }
             }
-
-        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS)){
+        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS) ||
+                annotation.modifier().equals(OOPTraitMethodModifier.INTER_MISSING_IMPL)){
 
             List<Class> interfaces = Arrays.asList(traitCollector.getInterfaces());
             List<Class> nextLevel = new ArrayList<>();
             boolean find_imp = false;
             Method realImpl = null;
-            Method newImpl = null;
+            Object classInst = null;
+            Method newImpl;
 
             while (!interfaces.isEmpty()) {
                 try {
@@ -166,7 +164,7 @@ public class OOPTraitControl {
                         try {
                             newImpl = i.getMethod(methodName, paramTypes);
                         } catch (Exception e){ continue; }
-                        OOPTraitMethod newAnnotation = method.getAnnotation(OOPTraitMethod.class);
+                        OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
 
                         if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
                             if (find_imp) {
@@ -174,6 +172,7 @@ public class OOPTraitControl {
                             }
                             find_imp = true;
                             realImpl = newImpl;
+                            classInst = i;
                             continue;
                         }
 
@@ -185,17 +184,20 @@ public class OOPTraitControl {
                             }
                             find_imp = true;
                             realImpl = newImpl;
+                            classInst = i;
                             continue;
                         }
                         nextLevel.addAll(Arrays.asList(i.getInterfaces()));
                     }
                     if(find_imp){
-                        return realImpl.invoke(obj, args);
+                        return realImpl.invoke(classInst, args);
                     }
                     interfaces.clear();
                     interfaces.addAll(nextLevel);
                     nextLevel.clear();
                 } catch (Exception e) {
+                    System.out.println(e.getMessage());
+                    return null;
                 }
             }
             if (realImpl == null){

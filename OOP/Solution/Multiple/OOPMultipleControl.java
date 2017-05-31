@@ -32,11 +32,11 @@ public class OOPMultipleControl {
 
         while (!interfaces.isEmpty()){
             for (Class i : interfaces) {
-                if (!Arrays.asList(i.getAnnotations()).contains(OOPMultipleInterface.class)){
+                if (!i.isAnnotationPresent(OOPMultipleInterface.class)){
                     throw new OOPBadClass(i);
                 }
                 for(Method m : i.getDeclaredMethods()){
-                    if (!Arrays.asList(m.getAnnotations()).contains(OOPMultipleMethod.class)){
+                    if (!m.isAnnotationPresent(OOPMultipleMethod.class)){
                         throw new OOPBadClass(m);
                     }
                 }
