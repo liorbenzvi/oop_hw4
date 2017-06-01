@@ -43,27 +43,34 @@ public class OOPTraitControl {
 
     private void addInstanceToMap(Class in) {
         String inName = in.getName();
-        StringBuilder klassName = new StringBuilder(inName);
-        klassName.setCharAt(inName.length()-2, 'C');
         Class klass;
         Object inst = null;
         try{
-            klass = Class.forName(klassName.toString());
+            klass = Class.forName(toC(inName));
             inst = klass.newInstance();
         }catch(Exception e){}
         instances.put(inName, inst);
-        instances.put(klassName.toString(), inst);
+    }
+
+    private String toC (String name){
+        StringBuilder klassName = new StringBuilder(name);
+        klassName.setCharAt(name.length()-2, 'C');
+        return klassName.toString();
+    }
+
+    private String toT (String name){
+        StringBuilder klassName = new StringBuilder(name);
+        klassName.setCharAt(name.length()-2, 'T');
+        return klassName.toString();
     }
 
     boolean checkInClass(Class in, Method me){
         String inName = in.getName();
-        StringBuilder klassName = new StringBuilder(inName);
-        klassName.setCharAt(inName.length()-2, 'C');
         Method classMethod;
         Class klass;
         OOPTraitMethod newAnnotation;
         try{
-            klass = Class.forName(klassName.toString());
+            klass = Class.forName(toC(inName));
         }catch(Exception e){ return false;}
         try{
             classMethod = klass.getMethod(me.getName(),me.getParameterTypes());
@@ -79,7 +86,7 @@ public class OOPTraitControl {
 
     boolean findRealImpl(Method me){
         List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
-        List<Class> nextLevel = new ArrayList<>();
+        List<Class> nextLevel = new LinkedList<>();
         Method newImpl = null;
         String methodName = me.getName();
         Class[] paramTypes = me.getParameterTypes();
@@ -125,7 +132,7 @@ public class OOPTraitControl {
     public void validateTraitLayout() throws OOPTraitException {
         List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
         HashSet<Class> visited = new HashSet<>();
-        List<Class> newInterfaces = new ArrayList<>();
+        List<Class> newInterfaces = new LinkedList<>();
         try{ checkAllAbs(traitCollector);} catch(OOPTraitException e){throw e;}
             while (!interfaces.isEmpty()){
             for (Class i : interfaces) {
@@ -149,8 +156,9 @@ public class OOPTraitControl {
                 newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
                 visited.add(i);
             }
-            interfaces = newInterfaces;
-            newInterfaces = new LinkedList<>();
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
         }
     }
 
@@ -171,7 +179,13 @@ public class OOPTraitControl {
 
         if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
             try {
-                Object inst = instances.get(method.getDeclaringClass().getName());
+                Object inst;
+                String key = method.getDeclaringClass().getName();
+                if(instances.containsKey(key)) {
+                    inst = instances.get(key);
+                } else {
+                    inst = instances.get(toT(key));
+                }
                 return method.invoke(inst, args);
             } catch (Exception e){}
 
@@ -181,7 +195,12 @@ public class OOPTraitControl {
             OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
             try {
                 Class<?> classInst = conflictAnnotation.resolve();
-                Object instance = instances.get(classInst.getName());
+                Object instance;
+                if(instances.containsKey(classInst.getName())){
+                    instance = instances.get(classInst.getName());
+                } else {
+                    instance = instances.get(toT(classInst.getName()));
+                }
                 Method newImpl = classInst.getMethod(methodName, paramTypes);
                 return newImpl.invoke(instance, args);
             }catch (Exception e) {
@@ -192,8 +211,9 @@ public class OOPTraitControl {
         if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS) ||
                 annotation.modifier().equals(OOPTraitMethodModifier.INTER_MISSING_IMPL)){
 
-            List<Class> interfaces = Arrays.asList(traitCollector.getInterfaces());
-            List<Class> nextLevel = new ArrayList<>();
+            List<Class> interfaces = new LinkedList<>();
+            interfaces.addAll(Arrays.asList(traitCollector.getInterfaces()));
+            List<Class> nextLevel = new LinkedList<>();
             boolean find_imp = false;
             Method realImpl = null;
             Method newImpl;
@@ -230,17 +250,22 @@ public class OOPTraitControl {
                         }
                         nextLevel.addAll(Arrays.asList(i.getInterfaces()));
                         String inName = i.getName();
-                        StringBuilder klassName = new StringBuilder(inName);
-                        klassName.setCharAt(inName.length()-2, 'C');
-                        Class klass = Class.forName(klassName.toString());
+                        Class klass = Class.forName(toC(inName));
                         nextLevel.add(klass);
                     }
                     if(find_imp){
-                        Object instance = instances.get(classImpl.getName());
+                        Object instance;
+                        if(instances.containsKey(classImpl.getName())) {
+                            instance = instances.get(classImpl.getName());
+                        } else {
+                            instance = instances.get(toT(classImpl.getName()));
+                        }
+
                         return realImpl.invoke(instance, args);
                     }
-                    interfaces = nextLevel;
-                    nextLevel = new LinkedList<>();
+                    interfaces.clear();
+                    interfaces.addAll(nextLevel);
+                    nextLevel.clear();
                 } catch (Exception e) { return null; }
             }
             if (realImpl == null){
