@@ -7,6 +7,7 @@ import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import OOP.Provided.Multiple.OOPBadClass;
 import javafx.util.Pair;
@@ -50,11 +51,54 @@ public class OOPMultipleControl {
             interfaces.addAll(newInterfaces);
             newInterfaces.clear();
         }
-
-
     }
 
-    Pair<Class<?>, Method> checkInInterfaceClass(Class in, String methodName, Class[] argsClass)
+    public int classDistance(Class source, Class dest){
+        int delta = 0;
+        String destName = dest.getName();
+        for(Class c = source ; c.getName() != destName ; c = c.getSuperclass()){
+            delta++;
+        }
+        return delta;
+    }
+
+    public int distance(Class[] sourceTypes, Class[] destTypes){
+        int dist = 0;
+        for(int i =0 ; i< destTypes.length ; i++){
+            Class currSource = sourceTypes[i];
+            Class currDest = destTypes[i];
+            if (!currDest.getName().equals(currSource.getName())){
+                dist+=classDistance(currSource,currDest);
+            }
+        }
+        return dist;
+    }
+
+    public List<Method> canInvoke(Class[] parameters,
+                          String methodName, Class klass) {
+        List<Method> retMethods  = new LinkedList<Method>();
+        for (Method method : klass.getMethods()) {
+            if (!method.getName().equals(methodName)) {
+                continue;
+            }
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length != parameters.length) continue;
+            boolean matches = true;
+            for (int i = 0; i < parameterTypes.length; i++) {
+                if (!parameterTypes[i].isAssignableFrom(parameters[i]
+                        .getClass())) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                retMethods.add(method);
+            }
+        }
+        return retMethods;
+    }
+
+    List<Method> checkInInterfaceClass(Class in, String methodName, Class[] argsClass)
             throws NoSuchMethodException{
         String inName = in.getName();
         StringBuilder klassName = new StringBuilder(inName);
@@ -64,10 +108,7 @@ public class OOPMultipleControl {
         try{
             klass = Class.forName(klassName.toString());
         }catch(Exception e){ throw new NoSuchMethodException();}
-        try{
-            me = klass.getMethod(methodName,argsClass);
-        } catch(Exception e){ throw new NoSuchMethodException();}
-        return new Pair(klass,me);
+        return canInvoke(argsClass,methodName,klass);
     }
 
     //TODO: fill in here :
@@ -76,14 +117,14 @@ public class OOPMultipleControl {
         HashSet<Class> visited = new HashSet<>();
         List<Class> newInterfaces = new LinkedList<>();
         ArrayList<Pair<Class<?>, Method>> candidates = new ArrayList<>();
+        List<Method> matches = new LinkedList<Method>();
         if(args == null) args = new Object[0];
         Class[] cArgs = Arrays.stream(args).map(arg -> arg.getClass()).toArray(Class[]::new);
 
         while (!interfaces.isEmpty()){
             for (Class in : interfaces){
                 try {
-                    Pair p = checkInInterfaceClass(in,methodName,cArgs);
-                    candidates.add(p);
+                    matches.addAll(checkInInterfaceClass(in,methodName,cArgs));
                 }
                 catch(NoSuchMethodException e){}
                 newInterfaces.addAll(Arrays.asList(in.getInterfaces()));
@@ -93,15 +134,21 @@ public class OOPMultipleControl {
             interfaces.addAll(newInterfaces);
             newInterfaces.clear();
         }
-        if (candidates.size() > 1 || candidates.size() == 0){
-            throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
+        int min = -1;
+        Method toInvoke = null;
+        for(Method met : matches){
+            int dist = distance(cArgs,met.getParameterTypes());
+            if (dist == min){
+                throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
+            }
+            if(min == -1 || dist < min){
+                min = dist;
+                toInvoke = met;
+            }
         }
         Object ret = null;
-        Pair p = candidates.get(0);
-        Method methodToInvoke = (Method)p.getValue();
-        Class classToInvoke = (Class)p.getKey();
         try{
-            ret = methodToInvoke.invoke(classToInvoke.newInstance(),args);
+            ret = toInvoke.invoke(toInvoke.getDeclaringClass().newInstance(),args);
         }catch (Exception e){ throw new OOPCoincidentalAmbiguity(candidates);}
         return ret;
     }

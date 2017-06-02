@@ -206,7 +206,7 @@ public class OOPTraitControl {
             }catch (Exception e) {
                 throw new OOPBadClass(method);
             }
-            }
+        }
 
         if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS) ||
                 annotation.modifier().equals(OOPTraitMethodModifier.INTER_MISSING_IMPL)){
