@@ -241,6 +241,18 @@ public class OOPTraitControl {
             List<Class> nextLevel = new LinkedList<>();
             Method newImpl;
 
+            if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
+                dist = distance(paramTypes, method.getParameterTypes());
+                if (dist == min) {
+                    throw new OOP.Provided.Trait.OOPTraitConflict(method);
+                }
+                if (min == -1 || dist < min) {
+                    min = dist;
+                    toInvoke = method;
+                    classImpl = method.getDeclaringClass();
+                }
+            }
+
             while (!interfaces.isEmpty()) {
                 for (Class i : interfaces) {
                     try {
