@@ -52,19 +52,55 @@ public class OOPTraitControl {
         instances.put(inName, inst);
     }
 
+    private int findCIndex(String name){
+        int i = name.length()-1;
+        while(i>=0 && (name.charAt(i)+ "").matches("[0-9]") ){
+            i--;
+        }
+        return i ;
+    }
+
     private String toC (String name){
+        int idx = findCIndex(name);
         StringBuilder klassName = new StringBuilder(name);
-        klassName.setCharAt(name.length()-2, 'C');
+        klassName.setCharAt(idx, 'C');
         return klassName.toString();
+    }
+
+    private boolean isC(String name){
+        int idx = findCIndex(name);
+        return (name.charAt(idx) == 'C');
     }
 
     private String toT (String name){
+        int idx = findCIndex(name);
         StringBuilder klassName = new StringBuilder(name);
-        klassName.setCharAt(name.length()-2, 'T');
+        klassName.setCharAt(idx, 'T');
         return klassName.toString();
     }
 
-    boolean checkInClass(Class in, Method me){
+    private int classDistance(Class source, Class dest){
+        int delta = 0;
+        String destName = dest.getName();
+        for(Class c = source ; c.getName() != destName ; c = c.getSuperclass()){
+            delta++;
+        }
+        return delta;
+    }
+
+    private int distance(Class[] sourceTypes, Class[] destTypes){
+        int dist = 0;
+        for(int i =0 ; i< destTypes.length ; i++){
+            Class currSource = sourceTypes[i];
+            Class currDest = destTypes[i];
+            if (!currDest.getName().equals(currSource.getName())){
+                dist+=classDistance(currSource,currDest);
+            }
+        }
+        return dist;
+    }
+
+    private boolean checkInClass(Class in, Method me){
         String inName = in.getName();
         Method classMethod;
         Class klass;
@@ -171,25 +207,16 @@ public class OOPTraitControl {
                 paramTypes[i] = args[i].getClass();
             }
         }
-        Method method = null;
+
+        int dist;
+        int min =- 1;
+        Method method;
+        Method toInvoke = null;
+        Class classImpl = null;
         try {
             method = traitCollector.getMethod(methodName, paramTypes);
         } catch (Exception e){ return null; }
         OOPTraitMethod annotation = method.getAnnotation(OOPTraitMethod.class);
-
-        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
-            try {
-                Object inst;
-                String key = method.getDeclaringClass().getName();
-                if(instances.containsKey(key)) {
-                    inst = instances.get(key);
-                } else {
-                    inst = instances.get(toT(key));
-                }
-                return method.invoke(inst, args);
-            } catch (Exception e){}
-
-        }
 
         if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)){
             OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
@@ -203,79 +230,93 @@ public class OOPTraitControl {
                 }
                 Method newImpl = classInst.getMethod(methodName, paramTypes);
                 return newImpl.invoke(instance, args);
-            }catch (Exception e) {
+            } catch (Exception e) {
                 throw new OOPBadClass(method);
             }
         }
 
-        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_ABS) ||
-                annotation.modifier().equals(OOPTraitMethodModifier.INTER_MISSING_IMPL)){
-
+      else {
             List<Class> interfaces = new LinkedList<>();
             interfaces.addAll(Arrays.asList(traitCollector.getInterfaces()));
             List<Class> nextLevel = new LinkedList<>();
-            boolean find_imp = false;
-            Method realImpl = null;
             Method newImpl;
-            Class classImpl = null;
 
             while (!interfaces.isEmpty()) {
-                try {
-                    for (Class i : interfaces) {
-                        try {
-                            newImpl = i.getMethod(methodName, paramTypes);
-                        } catch (Exception e){ continue; }
-                        OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
+                for (Class i : interfaces) {
+                    try {
+                        newImpl = i.getMethod(methodName, paramTypes);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                    OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
 
-                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
-                            if (find_imp) {
-                                throw new OOPTraitConflict(method);
-                            }
-                            find_imp = true;
-                            realImpl = newImpl;
-                            classImpl = i ;
-                            continue;
+                    if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
+                        dist = distance(paramTypes, newImpl.getParameterTypes());
+                        if (dist == min) {
+                            throw new OOP.Provided.Trait.OOPTraitConflict(newImpl);
                         }
-
-                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)) {
-                            OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
-                            newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
-                            if (find_imp) {
-                                throw new OOPTraitConflict(method);
-                            }
-                            find_imp = true;
-                            realImpl = newImpl;
+                        if (min == -1 || dist < min) {
+                            min = dist;
+                            toInvoke = newImpl;
                             classImpl = i;
-                            continue;
                         }
-                        nextLevel.addAll(Arrays.asList(i.getInterfaces()));
-                        String inName = i.getName();
-                        Class klass = Class.forName(toC(inName));
-                        nextLevel.add(klass);
+                        continue;
                     }
-                    if(find_imp){
-                        Object instance;
-                        if(instances.containsKey(classImpl.getName())) {
-                            instance = instances.get(classImpl.getName());
-                        } else {
-                            instance = instances.get(toT(classImpl.getName()));
-                        }
 
-                        return realImpl.invoke(instance, args);
+                    if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)) {
+                        OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
+
+                        try {
+                            newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
+                            Class<?> classInst = conflictAnnotation.resolve();
+                            Object instance;
+                            if (instances.containsKey(classInst.getName())) {
+                                instance = instances.get(classInst.getName());
+                            } else {
+                                instance = instances.get(toT(classInst.getName()));
+                            }
+                            return newImpl.invoke(instance, args);
+                        } catch (Exception e) {
+                            throw new OOPBadClass(method);
+                        }
                     }
-                    interfaces.clear();
-                    interfaces.addAll(nextLevel);
-                    nextLevel.clear();
-                } catch (Exception e) { return null; }
+
+                    if (isC(i.getName())) continue;
+                    nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                    String inName = i.getName();
+                    Class klass = null;
+                    try {
+                        klass = Class.forName(toC(inName));
+                    } catch (Exception e) {
+                    }
+                    nextLevel.add(klass);
+                }
+                interfaces.clear();
+                interfaces.addAll(nextLevel);
+                nextLevel.clear();
+
             }
-            if (realImpl == null){
-                throw new OOPTraitMissingImpl(method);
+        }
+
+        if (toInvoke != null){
+            Object instance;
+            if(instances.containsKey(classImpl.getName())) {
+                instance = instances.get(classImpl.getName());
+            } else {
+                instance = instances.get(toT(classImpl.getName()));
             }
+            try {
+                return toInvoke.invoke(instance, args);
+            } catch (Exception e){}
+
+        } else {
+            throw new OOPTraitMissingImpl(method);
         }
         return null;
     }
 
     //TODO: add more of your code :
+
 
 
     //TODO: DO NOT CHANGE !!!!!!
