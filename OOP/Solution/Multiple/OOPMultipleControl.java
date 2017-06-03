@@ -98,15 +98,29 @@ public class OOPMultipleControl {
         return retMethods;
     }
 
+    private int findCIndex(String name){
+        int i = name.length()-1;
+        while(i>=0 && (name.charAt(i)+ "").matches("[0-9]") ){
+            i--;
+        }
+        return i ;
+    }
+
+    private String toC (String name){
+        int idx = findCIndex(name);
+        StringBuilder klassName = new StringBuilder(name);
+        klassName.setCharAt(idx, 'C');
+        return klassName.toString();
+    }
+
     List<Method> checkInInterfaceClass(Class in, String methodName, Class[] argsClass)
             throws NoSuchMethodException{
         String inName = in.getName();
-        StringBuilder klassName = new StringBuilder(inName);
-        klassName.setCharAt(inName.length()-2, 'C');
+        String klassName = toC(inName);
         Method me;
         Class klass;
         try{
-            klass = Class.forName(klassName.toString());
+            klass = Class.forName(klassName);
         }catch(Exception e){ throw new NoSuchMethodException();}
         return canInvoke(argsClass,methodName,klass);
     }
@@ -136,20 +150,33 @@ public class OOPMultipleControl {
         }
         int min = -1;
         Method toInvoke = null;
+        HashMap<Integer,LinkedList<Method>> distMap = new HashMap<>();
         for(Method met : matches){
             int dist = distance(cArgs,met.getParameterTypes());
-            if (dist == min){
-                throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
+            if(distMap.containsKey(dist)){
+                LinkedList<Method> metList = distMap.get(dist);
+                metList.add(met);
+            }else{
+                LinkedList<Method> metList = new LinkedList<>();
+                metList.add(met);
+                distMap.put(dist,metList);
             }
-            if(min == -1 || dist < min){
-                min = dist;
-                toInvoke = met;
+        }
+        min = Collections.min(distMap.keySet());
+        LinkedList<Method> metList = distMap.get(min);
+        if (metList.size() > 1){
+            for(Method met:metList){
+                Pair<Class<?>,Method> p = new Pair(met.getDeclaringClass(),met);
+                candidates.add(p);
             }
+            throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
+        }else{
+            toInvoke = metList.getFirst();
         }
         Object ret = null;
         try{
             ret = toInvoke.invoke(toInvoke.getDeclaringClass().newInstance(),args);
-        }catch (Exception e){ throw new OOPCoincidentalAmbiguity(candidates);}
+        }catch (Exception e){ /*which exception should be thrown here? */}
         return ret;
     }
 
