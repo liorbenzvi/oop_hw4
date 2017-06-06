@@ -44,11 +44,11 @@ public class OOPTraitControl {
     private void addInstanceToMap(Class in) {
         String inName = in.getName();
         Class klass;
-        Object inst = null;
+        Object inst;
         try{
             klass = Class.forName(toC(inName));
             inst = klass.newInstance();
-        }catch(Exception e){}
+        } catch(Exception e){ return; }
         instances.put(inName, inst);
     }
 
@@ -94,7 +94,7 @@ public class OOPTraitControl {
             Class currSource = sourceTypes[i];
             Class currDest = destTypes[i];
             if (!currDest.getName().equals(currSource.getName())){
-                dist+=classDistance(currSource,currDest);
+                dist += classDistance(currSource,currDest);
             }
         }
         return dist;
@@ -241,18 +241,6 @@ public class OOPTraitControl {
             List<Class> nextLevel = new LinkedList<>();
             Method newImpl;
 
-            if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
-                dist = distance(paramTypes, method.getParameterTypes());
-                if (dist == min) {
-                    throw new OOP.Provided.Trait.OOPTraitConflict(method);
-                }
-                if (min == -1 || dist < min) {
-                    min = dist;
-                    toInvoke = method;
-                    classImpl = method.getDeclaringClass();
-                }
-            }
-
             while (!interfaces.isEmpty()) {
                 for (Class i : interfaces) {
                     try {
@@ -299,8 +287,7 @@ public class OOPTraitControl {
                     Class klass = null;
                     try {
                         klass = Class.forName(toC(inName));
-                    } catch (Exception e) {
-                    }
+                    } catch (Exception e) {}
                     nextLevel.add(klass);
                 }
                 interfaces.clear();
