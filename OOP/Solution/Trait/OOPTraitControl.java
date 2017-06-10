@@ -207,7 +207,7 @@ public class OOPTraitControl {
                 paramTypes[i] = args[i].getClass();
             }
         }
-
+        HashMap<Integer,LinkedList<Method>> distMap = new HashMap<>();
         int dist;
         int min =- 1;
         Method method;
@@ -233,13 +233,23 @@ public class OOPTraitControl {
             } catch (Exception e) {
                 throw new OOPBadClass(method);
             }
-        }
-
-      else {
+        } else {
             List<Class> interfaces = new LinkedList<>();
             interfaces.addAll(Arrays.asList(traitCollector.getInterfaces()));
             List<Class> nextLevel = new LinkedList<>();
             Method newImpl;
+/*
+            if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
+                dist = distance(paramTypes, method.getParameterTypes());
+                if(distMap.containsKey(dist)){
+                    LinkedList<Method> metList = distMap.get(dist);
+                    metList.add(method);
+                }else{
+                    LinkedList<Method> metList = new LinkedList<>();
+                    metList.add(method);
+                    distMap.put(dist,metList);
+                }
+            }*/
 
             while (!interfaces.isEmpty()) {
                 for (Class i : interfaces) {
@@ -252,13 +262,13 @@ public class OOPTraitControl {
 
                     if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
                         dist = distance(paramTypes, newImpl.getParameterTypes());
-                        if (dist == min) {
-                            throw new OOP.Provided.Trait.OOPTraitConflict(newImpl);
-                        }
-                        if (min == -1 || dist < min) {
-                            min = dist;
-                            toInvoke = newImpl;
-                            classImpl = i;
+                        if(distMap.containsKey(dist)){
+                            LinkedList<Method> metList = distMap.get(dist);
+                            metList.add(newImpl);
+                        }else{
+                            LinkedList<Method> metList = new LinkedList<>();
+                            metList.add(newImpl);
+                            distMap.put(dist,metList);
                         }
                         continue;
                     }
@@ -287,7 +297,7 @@ public class OOPTraitControl {
                     Class klass = null;
                     try {
                         klass = Class.forName(toC(inName));
-                    } catch (Exception e) {}
+                    } catch (Exception e) {continue;}
                     nextLevel.add(klass);
                 }
                 interfaces.clear();
@@ -295,6 +305,18 @@ public class OOPTraitControl {
                 nextLevel.clear();
 
             }
+        }
+
+        min = Collections.min(distMap.keySet());
+        LinkedList<Method> metList = distMap.get(min);
+        if (metList.size() > 1){
+            for(Method me : metList){
+                System.out.println(me.getDeclaringClass());
+            }
+            throw new OOPTraitConflict(method);
+        }else{
+            toInvoke = metList.getFirst();
+            classImpl = toInvoke.getDeclaringClass();
         }
 
         if (toInvoke != null){
