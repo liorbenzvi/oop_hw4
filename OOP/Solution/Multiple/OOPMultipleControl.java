@@ -42,7 +42,10 @@ public class OOPMultipleControl {
                     }
                 }
                 if (visited.contains(i) && i.getMethods().length != 0) {
-                    throw new OOPInherentAmbiguity(interfaceClass, i, i.getMethods()[0]);
+                    /* switch this argument: i.getMethods()[0].getDeclaringClass()
+                    * with: i
+                    * you'll see what is the problem then*/
+                    throw new OOPInherentAmbiguity(interfaceClass, i.getMethods()[0].getDeclaringClass(), i.getMethods()[0]);
                 }
                 newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
                 visited.add(i);
@@ -77,21 +80,22 @@ public class OOPMultipleControl {
     public List<Method> canInvoke(Class[] parameters,
                           String methodName, Class klass) {
         List<Method> retMethods  = new LinkedList<Method>();
-        for (Method method : klass.getMethods()) {
+        for (Method method : klass.getDeclaredMethods()) {
             if (!method.getName().equals(methodName)) {
                 continue;
             }
             Class<?>[] parameterTypes = method.getParameterTypes();
             if (parameterTypes.length != parameters.length) continue;
+
             boolean matches = true;
             for (int i = 0; i < parameterTypes.length; i++) {
-                if (!parameterTypes[i].isAssignableFrom(parameters[i]
-                        .getClass())) {
+                if (!parameterTypes[i].isAssignableFrom(parameters[i])) {
                     matches = false;
                     break;
                 }
             }
             if (matches) {
+
                 retMethods.add(method);
             }
         }
@@ -100,10 +104,18 @@ public class OOPMultipleControl {
 
     private int findCIndex(String name){
         int i = name.length()-1;
-        while(i>=0 && (name.charAt(i)+ "").matches("[0-9]") ){
+        while(i>=0 && !(name.charAt(i)+ "").equals(".") ){
             i--;
         }
-        return i ;
+        return i+1 ;
+    }
+
+
+    private String toI (String name){
+        int idx = findCIndex(name);
+        StringBuilder klassName = new StringBuilder(name);
+        klassName.setCharAt(idx, 'I');
+        return klassName.toString();
     }
 
     private String toC (String name){
@@ -138,6 +150,7 @@ public class OOPMultipleControl {
         while (!interfaces.isEmpty()){
             for (Class in : interfaces){
                 try {
+
                     matches.addAll(checkInInterfaceClass(in,methodName,cArgs));
                 }
                 catch(NoSuchMethodException e){}
@@ -152,6 +165,7 @@ public class OOPMultipleControl {
         Method toInvoke = null;
         HashMap<Integer,LinkedList<Method>> distMap = new HashMap<>();
         for(Method met : matches){
+            //System.out.println("Method: "+met.getName()+" "+met.getDeclaringClass());
             int dist = distance(cArgs,met.getParameterTypes());
             if(distMap.containsKey(dist)){
                 LinkedList<Method> metList = distMap.get(dist);
@@ -166,7 +180,10 @@ public class OOPMultipleControl {
         LinkedList<Method> metList = distMap.get(min);
         if (metList.size() > 1){
             for(Method met:metList){
-                Pair<Class<?>,Method> p = new Pair(met.getDeclaringClass(),met);
+                String inName = toI(met.getDeclaringClass().getName());
+                Class inClass=null;
+                try{inClass = Class.forName(inName);} catch(Exception e){}
+                Pair<Class<?>,Method> p = new Pair(inClass,met);
                 candidates.add(p);
             }
             throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
