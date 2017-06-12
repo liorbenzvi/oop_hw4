@@ -1,13 +1,10 @@
 package OOP.Solution.Multiple;
 
-import OOP.Provided.Multiple.OOPCoincidentalAmbiguity;
 import OOP.Provided.Multiple.OOPInherentAmbiguity;
 import OOP.Provided.Multiple.OOPMultipleException;
 import java.io.File;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import OOP.Provided.Multiple.OOPBadClass;
 import javafx.util.Pair;
@@ -30,6 +27,7 @@ public class OOPMultipleControl {
         List<Class> interfaces = new LinkedList<Class>(Arrays.asList(interfaceClass.getInterfaces()));
         HashSet<Class> visited = new HashSet<>();
         List<Class> newInterfaces = new LinkedList<>();
+        HashSet<Method> ImplMethods = new HashSet<>();
 
         while (!interfaces.isEmpty()){
             for (Class i : interfaces) {
@@ -42,18 +40,36 @@ public class OOPMultipleControl {
                     }
                 }
                 if (visited.contains(i) && i.getMethods().length != 0) {
-                    /* switch this argument: i.getMethods()[0].getDeclaringClass()
-                    * with: i
-                    * you'll see what is the problem then*/
-                    throw new OOPInherentAmbiguity(interfaceClass, i.getMethods()[0].getDeclaringClass(), i.getMethods()[0]);
+                    HashSet<Method> ImplMethodsForCheck = new HashSet<>();
+                    ImplMethodsForCheck.addAll(ImplMethods);
+                    for (Method instM: i.getDeclaredMethods()){
+                        ImplMethodsForCheck.remove(instM);
+                    }
+                    for(Method instM: i.getDeclaredMethods()){
+                        for(Method prevM : ImplMethodsForCheck){
+                            if(prevM.getName().equals(instM.getName()) && areArraysEqual(prevM.getParameterTypes(),instM.getParameterTypes())){
+                                break;
+                            }
+                        }
+                        throw new OOPInherentAmbiguity(interfaceClass, instM.getDeclaringClass(), instM);
+                    }
                 }
                 newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
                 visited.add(i);
+                ImplMethods.addAll(Arrays.asList(i.getDeclaredMethods()));
             }
             interfaces.clear();
             interfaces.addAll(newInterfaces);
             newInterfaces.clear();
         }
+    }
+
+    private boolean areArraysEqual(Class<?>[] parameterTypes1, Class<?>[] parameterTypes2) {
+        List<Class> parameterTypes2List = Arrays.asList(parameterTypes2);
+        for(Class c: parameterTypes1){
+            if(!parameterTypes2List.contains(c)) return false;
+        }
+        return true;
     }
 
     public int classDistance(Class source, Class dest){

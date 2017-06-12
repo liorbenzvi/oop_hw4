@@ -54,10 +54,10 @@ public class OOPTraitControl {
 
     private int findCIndex(String name){
         int i = name.length()-1;
-        while(i>=0 && (name.charAt(i)+ "").matches("[0-9]") ){
+        while(i>=0 && !(name.charAt(i)+ "").equals(".") ){
             i--;
         }
-        return i ;
+        return i+1 ;
     }
 
     private String toC (String name){
