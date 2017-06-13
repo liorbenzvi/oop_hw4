@@ -117,7 +117,13 @@ public class OOPMultipleControl {
                 continue;
             }
             Class<?>[] parameterTypes = method.getParameterTypes();
-            if (parameterTypes.length != parameters.length) continue;
+
+            int parameterTypesLength = 0;
+            int parametersLength = 0;
+            if(parameterTypes!= null) parameterTypesLength = parameterTypes.length;
+            if(parameters!= null) parametersLength = parameters.length;
+
+            if (parameterTypesLength != parametersLength) continue;
 
             boolean matches = true;
             for (int i = 0; i < parameterTypes.length; i++) {

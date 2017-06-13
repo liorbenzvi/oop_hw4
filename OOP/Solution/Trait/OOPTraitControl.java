@@ -198,6 +198,55 @@ public class OOPTraitControl {
         }
     }
 
+    public List<Method> canInvoke(Class[] parameters, String methodName, Class klass) {
+        List<Method> retMethods  = new LinkedList<Method>();
+        for (Method method : klass.getDeclaredMethods()) {
+            if (!method.getName().equals(methodName)) {
+                continue;
+            }
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            int parameterTypesLength = 0;
+            int parametersLength = 0;
+            if(parameterTypes!= null) parameterTypesLength = parameterTypes.length;
+            if(parameters!= null) parametersLength = parameters.length;
+
+            if (parameterTypesLength != parametersLength) continue;
+
+            boolean matches = true;
+            for (int i = 0; i < parameterTypes.length; i++) {
+                if (!parameterTypes[i].isAssignableFrom(parameters[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                retMethods.add(method);
+            }
+        }
+        return retMethods;
+    }
+
+    private int findLevel(Class<?> declaringClass) {
+        int level = 1;
+        Class tDeclaringClass = null;
+        try {
+            tDeclaringClass = Class.forName(toT(declaringClass.getName()));
+        } catch (Exception e){}
+        List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
+        List<Class> newInterfaces = new LinkedList<>();
+        while (!interfaces.isEmpty()) {
+            for (Class in : interfaces) {
+                if(toT(in.getName()).equals(toT(tDeclaringClass.getName()))) return level;
+                newInterfaces.addAll(Arrays.asList(in.getInterfaces()));
+            }
+            level ++;
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
+        }
+        return -1;
+    }
+
     //TODO: fill in here :
     public Object invoke(String methodName, Object[] args) throws OOPTraitException {
         Class<?>[] paramTypes = null;
@@ -209,16 +258,19 @@ public class OOPTraitControl {
         }
         HashMap<Integer,LinkedList<Method>> distMap = new HashMap<>();
         int dist;
-        int min =- 1;
-        Method method;
-        Method toInvoke = null;
-        Class classImpl = null;
+        int min;
+        Method method = null;
+        Method toInvoke;
+        Class classImpl;
+        OOPTraitMethod annotation = null;
         try {
             method = traitCollector.getMethod(methodName, paramTypes);
-        } catch (Exception e){ return null; }
-        OOPTraitMethod annotation = method.getAnnotation(OOPTraitMethod.class);
+        } catch (Exception e){}
+        if(method != null) {
+            annotation = method.getAnnotation(OOPTraitMethod.class);
+        }
 
-        if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)){
+        if(annotation != null && annotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)){
             OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
             try {
                 Class<?> classInst = conflictAnnotation.resolve();
@@ -237,87 +289,75 @@ public class OOPTraitControl {
             List<Class> interfaces = new LinkedList<>();
             interfaces.addAll(Arrays.asList(traitCollector.getInterfaces()));
             List<Class> nextLevel = new LinkedList<>();
-            Method newImpl;
-/*
-            if(annotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
-                dist = distance(paramTypes, method.getParameterTypes());
-                if(distMap.containsKey(dist)){
-                    LinkedList<Method> metList = distMap.get(dist);
-                    metList.add(method);
-                }else{
-                    LinkedList<Method> metList = new LinkedList<>();
-                    metList.add(method);
-                    distMap.put(dist,metList);
-                }
-            }*/
-
             while (!interfaces.isEmpty()) {
                 for (Class i : interfaces) {
-                    try {
-                        newImpl = i.getMethod(methodName, paramTypes);
-                    } catch (Exception e) {
-                        continue;
-                    }
-                    OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
+                    String inName = i.getName();
+                    List<Method> matches = canInvoke(paramTypes, methodName, i);
+                    for(Method newImpl : matches) {
+                        OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
 
-                    if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
-                        dist = distance(paramTypes, newImpl.getParameterTypes());
-                        if(distMap.containsKey(dist)){
-                            LinkedList<Method> metList = distMap.get(dist);
-                            metList.add(newImpl);
-                        }else{
-                            LinkedList<Method> metList = new LinkedList<>();
-                            metList.add(newImpl);
-                            distMap.put(dist,metList);
-                        }
-                        continue;
-                    }
-
-                    if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)) {
-                        OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
-
-                        try {
-                            newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
-                            Class<?> classInst = conflictAnnotation.resolve();
-                            Object instance;
-                            if (instances.containsKey(classInst.getName())) {
-                                instance = instances.get(classInst.getName());
+                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)) {
+                            dist = distance(paramTypes, newImpl.getParameterTypes());
+                            if (distMap.containsKey(dist)) {
+                                LinkedList<Method> metList = distMap.get(dist);
+                                metList.add(newImpl);
                             } else {
-                                instance = instances.get(toT(classInst.getName()));
+                                LinkedList<Method> metList = new LinkedList<>();
+                                metList.add(newImpl);
+                                distMap.put(dist, metList);
                             }
-                            return newImpl.invoke(instance, args);
-                        } catch (Exception e) {
-                            throw new OOPBadClass(method);
+                            continue;
+                        }
+
+                        if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_CONFLICT)) {
+                            OOPTraitConflictResolver conflictAnnotation = method.getAnnotation(OOPTraitConflictResolver.class);
+
+                            try {
+                                newImpl = conflictAnnotation.resolve().getMethod(methodName, paramTypes);
+                                Class<?> classInst = conflictAnnotation.resolve();
+                                Object instance;
+                                if (instances.containsKey(classInst.getName())) {
+                                    instance = instances.get(classInst.getName());
+                                } else {
+                                    instance = instances.get(toT(classInst.getName()));
+                                }
+                                return newImpl.invoke(instance, args);
+                            } catch (Exception e) {
+                                throw new OOPBadClass(method);
+                            }
                         }
                     }
 
                     if (isC(i.getName())) continue;
                     nextLevel.addAll(Arrays.asList(i.getInterfaces()));
-                    String inName = i.getName();
-                    Class klass = null;
+                    String inName1 = i.getName();
+                    Class klass1;
                     try {
-                        klass = Class.forName(toC(inName));
-                    } catch (Exception e) {continue;}
-                    nextLevel.add(klass);
+                         klass1 = Class.forName(toC(inName1));
+                        } catch (Exception e) {
+                            continue;
+                        }
+                    nextLevel.add(klass1);
+
                 }
                 interfaces.clear();
                 interfaces.addAll(nextLevel);
                 nextLevel.clear();
-
             }
         }
 
         min = Collections.min(distMap.keySet());
         LinkedList<Method> metList = distMap.get(min);
-        if (metList.size() > 1){
-            for(Method me : metList){
-                System.out.println(me.getDeclaringClass());
-            }
-            throw new OOPTraitConflict(method);
-        }else{
-            toInvoke = metList.getFirst();
-            classImpl = toInvoke.getDeclaringClass();
+        if (metList.size() > 1) {
+        HashSet<Integer> levels = new HashSet<>();
+        for (Method me : metList) {
+            int newLevel = findLevel(me.getDeclaringClass());
+            if (levels.contains(newLevel)) throw new OOPTraitConflict(me);
+            levels.add(newLevel);
         }
+        }
+        toInvoke = metList.getFirst();
+        classImpl = toInvoke.getDeclaringClass();
 
         if (toInvoke != null){
             Object instance;
