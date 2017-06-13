@@ -24,12 +24,12 @@ public class OOPMultipleControl {
     //TODO: fill in here :
     public void validateInheritanceGraph() throws OOPMultipleException {
 
-        List<Class> interfaces = new LinkedList<Class>(Arrays.asList(interfaceClass.getInterfaces()));
+        List<Class> interfaces = new LinkedList<>(Arrays.asList(interfaceClass.getInterfaces()));
         HashSet<Class> visited = new HashSet<>();
         List<Class> newInterfaces = new LinkedList<>();
         HashSet<Method> ImplMethods = new HashSet<>();
 
-        while (!interfaces.isEmpty()){
+        while (!interfaces.isEmpty()) {
             for (Class i : interfaces) {
                 if (!i.isAnnotationPresent(OOPMultipleInterface.class)){
                     throw new OOPBadClass(i);
@@ -39,6 +39,22 @@ public class OOPMultipleControl {
                         throw new OOPBadClass(m);
                     }
                 }
+                newInterfaces.addAll(Arrays.asList(i.getInterfaces()));
+                visited.add(i);
+                ImplMethods.addAll(Arrays.asList(i.getDeclaredMethods()));
+            }
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
+        }
+
+        interfaces = new LinkedList<>(Arrays.asList(interfaceClass.getInterfaces()));
+        visited = new HashSet<>();
+        newInterfaces = new LinkedList<>();
+        ImplMethods = new HashSet<>();
+
+        while (!interfaces.isEmpty()){
+            for (Class i : interfaces) {
                 if (visited.contains(i) && i.getMethods().length != 0) {
                     HashSet<Method> ImplMethodsForCheck = new HashSet<>();
                     ImplMethodsForCheck.addAll(ImplMethods);
@@ -181,7 +197,6 @@ public class OOPMultipleControl {
         Method toInvoke = null;
         HashMap<Integer,LinkedList<Method>> distMap = new HashMap<>();
         for(Method met : matches){
-            //System.out.println("Method: "+met.getName()+" "+met.getDeclaringClass());
             int dist = distance(cArgs,met.getParameterTypes());
             if(distMap.containsKey(dist)){
                 LinkedList<Method> metList = distMap.get(dist);
@@ -195,22 +210,45 @@ public class OOPMultipleControl {
         min = Collections.min(distMap.keySet());
         LinkedList<Method> metList = distMap.get(min);
         if (metList.size() > 1){
-            for(Method met:metList){
-                String inName = toI(met.getDeclaringClass().getName());
-                Class inClass=null;
-                try{inClass = Class.forName(inName);} catch(Exception e){}
-                Pair<Class<?>,Method> p = new Pair(inClass,met);
-                candidates.add(p);
+            HashSet<Integer> levels= new HashSet<>() ;
+            for(Method met1 :metList){
+                int newLevel = findLevel(met1.getDeclaringClass());
+                if(levels.contains(newLevel)){
+                    for(Method met:metList){
+                        String inName = toI(met.getDeclaringClass().getName());
+                        Class inClass = null;
+                        try{inClass = Class.forName(inName);} catch(Exception e){}
+                        Pair<Class<?>,Method> p = new Pair(inClass,met);
+                        candidates.add(p);
+                    }
+                    throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
+                }
+                levels.add(newLevel);
             }
-            throw new OOP.Provided.Multiple.OOPCoincidentalAmbiguity(candidates);
-        }else{
-            toInvoke = metList.getFirst();
         }
+        toInvoke = metList.getFirst();
         Object ret = null;
         try{
             ret = toInvoke.invoke(toInvoke.getDeclaringClass().newInstance(),args);
         }catch (Exception e){ /*which exception should be thrown here? */}
         return ret;
+    }
+
+    private int findLevel(Class<?> declaringClass) {
+        int level = 1;
+        List<Class> interfaces = new LinkedList<Class>(Arrays.asList(interfaceClass.getInterfaces()));
+        List<Class> newInterfaces = new LinkedList<>();
+        while (!interfaces.isEmpty()) {
+            for (Class in : interfaces) {
+                if(toI(in.getName()).equals(toI(declaringClass.getName()))) return level;
+                newInterfaces.addAll(Arrays.asList(in.getInterfaces()));
+            }
+            level ++;
+            interfaces.clear();
+            interfaces.addAll(newInterfaces);
+            newInterfaces.clear();
+        }
+        return -1;
     }
 
     //TODO: add more of your code :
