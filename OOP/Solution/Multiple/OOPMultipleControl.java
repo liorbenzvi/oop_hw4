@@ -89,11 +89,23 @@ public class OOPMultipleControl {
         return true;
     }
 
-    public int classDistance(Class source, Class dest){
+    private int classDistance(Class source, Class dest){
         int delta = 0;
-        String destName = dest.getName();
-        for(Class c = source ; c.getName() != destName ; c = c.getSuperclass()){
+        List<Class> level = new LinkedList<>();
+        List<Class> nextLevel = new LinkedList<>();
+        level.add(source);
+        while(!level.contains(dest)){
             delta++;
+            for (Class c: level){
+                if(c.getInterfaces().length != 0){
+                    nextLevel.addAll(Arrays.asList(c.getInterfaces()));
+                    continue;
+                }
+                if(c.getSuperclass()!= null) nextLevel.add(c.getSuperclass());
+            }
+            level.clear();
+            level.addAll(nextLevel);
+            nextLevel.clear();
         }
         return delta;
     }
