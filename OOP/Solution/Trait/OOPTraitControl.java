@@ -5,6 +5,7 @@ import OOP.Provided.Trait.OOPTraitConflict;
 import OOP.Provided.Trait.OOPTraitException;
 import OOP.Provided.Trait.OOPTraitMissingImpl;
 
+import javax.sound.midi.SysexMessage;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -15,6 +16,7 @@ public class OOPTraitControl {
     private Class<?> traitCollector;
     private File sourceFile;
     private HashMap<String, Object> instances;
+    Method last_method = null;
 
     //TODO: DO NOT CHANGE !!!!!!
     public OOPTraitControl(Class<?> traitCollector, File sourceFile) {
@@ -120,48 +122,118 @@ public class OOPTraitControl {
         return false;
     }
 
-    boolean findRealImpl(Method me){
+    int findRealImpl(Method me){
         List<Class> interfaces = new LinkedList<Class>(Arrays.asList(traitCollector.getInterfaces()));
         List<Class> nextLevel = new LinkedList<>();
+        HashSet<Class> visited = new HashSet<>();
         Method newImpl = null;
         String methodName = me.getName();
         Class[] paramTypes = me.getParameterTypes();
+        int count = 0;
         while (!interfaces.isEmpty()) {
             try {
                 for (Class i : interfaces) {
+                    if(visited.contains(i)) continue;
                     try {
-                        newImpl = i.getMethod(methodName, paramTypes);
+                        newImpl = i.getDeclaredMethod(methodName, paramTypes);
                     } catch (Exception e){
-                        if(checkInClass(i,me)) return true;
-                        continue; }
+                        if(checkInClass(i,me)) {count++;}
+                        else{count += canInvoke(paramTypes,methodName,i).size();}
+                        visited.add(i);
+                        nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                        //System.out.println("1 done checking " + i.getName() + " count is " + count);
+                        continue;
+                    }
                     OOPTraitMethod newAnnotation = newImpl.getAnnotation(OOPTraitMethod.class);
-
                     if (newAnnotation.modifier().equals(OOPTraitMethodModifier.INTER_IMPL)){
-                        return true;
+                        last_method = newImpl;
+                        count++;
+                    }else{
+                        Class c = null;
+                        try{c = Class.forName(toC(i.getName()));} catch(Exception e){
+                            nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                            visited.add(i);
+                            //System.out.println("2 done checking " + i.getName() + " count is " + count);
+                            continue;
+                        }
+                        if(checkInClass(i,me)) {count++; }
+                        else{count += canInvoke(paramTypes,methodName,c).size();}
                     }
                     nextLevel.addAll(Arrays.asList(i.getInterfaces()));
+                    visited.add(i);
+                    //System.out.println("3 done checking " + i.getName() + " count is " + count + " Method is from: " + newImpl.getDeclaringClass());
                 }
                 interfaces.clear();
-                interfaces.addAll(nextLevel);
+                Set<Class> nextLevelNoDup = new LinkedHashSet<Class>(nextLevel);
+                interfaces.addAll(nextLevelNoDup);
+                nextLevelNoDup.clear();
                 nextLevel.clear();
             } catch (Exception e) {}
+        }
+        return count;
+    }
+
+    boolean isConfilctResolved(Method met){
+        String name = met.getName();
+        for(Method m : traitCollector.getDeclaredMethods()){
+            if(!name.equals(m.getName())){ continue;}
+            if(m.isAnnotationPresent(OOPTraitConflictResolver.class)){return true;}
         }
         return false;
     }
 
     boolean isAbs(Method me){
-        if (!me.isAnnotationPresent(OOPTraitBehaviour.class)) return false;
+        if (!me.isAnnotationPresent(OOPTraitMethod.class)) return false;
         OOPTraitMethodModifier val = me.getAnnotation(OOPTraitMethod.class).modifier();
         if (val == OOPTraitMethodModifier.INTER_ABS ) return true;
         return false;
     }
 
+    boolean isMissing(Method me){
+        if (!me.isAnnotationPresent(OOPTraitMethod.class)) return false;
+        OOPTraitMethodModifier val = me.getAnnotation(OOPTraitMethod.class).modifier();
+        if (val == OOPTraitMethodModifier.INTER_MISSING_IMPL ) return true;
+        return false;
+    }
+
+    void checkAllMissing(Class c)throws OOPTraitException{
+        Method[] missMethods = Arrays.stream(c.getDeclaredMethods()).
+                filter(me -> isMissing(me)).toArray(Method[]::new);
+        for (Method me : missMethods){
+            System.out.println("in missing: "+me.getDeclaringClass());
+            int num = findRealImpl(me);
+            //if(num == 0) throw new OOPTraitMissingImpl(me);
+            if(num > 1) throw new OOPTraitConflict(last_method);
+        }
+    }
+
     void checkAllAbs(Class c)throws OOPTraitException{
-        Method[] absMethods = Arrays.stream(c.getMethods()).
+        Method[] absMethods = Arrays.stream(c.getDeclaredMethods()).
                 filter(me -> isAbs(me)).toArray(Method[]::new);
         for (Method me : absMethods){
-            if(!findRealImpl(me)) throw new OOPTraitMissingImpl(me);
+            //System.out.println("checked method: " + me.getDeclaringClass());
+            int num = findRealImpl(me);
+            if(num == 0) throw new OOPTraitMissingImpl(me);
+            if(num > 1 && !isConfilctResolved(me)) throw new OOPTraitConflict(last_method);
         }
+    }
+
+    void checkAllConf()throws OOPTraitException {
+        for(Method m:traitCollector.getDeclaredMethods()){
+            if (!m.isAnnotationPresent(OOPTraitMethod.class)) continue;
+            if (!(m.getAnnotation(OOPTraitMethod.class).modifier() == OOPTraitMethodModifier.INTER_CONFLICT)) continue;
+            if(canInvoke(m.getParameterTypes(),m.getName(),m.getAnnotation(OOPTraitConflictResolver.class).resolve()).size()== 0){
+                Class in = m.getAnnotation(OOPTraitConflictResolver.class).resolve();
+                Class c = null;
+                if(!(checkInClass(in,m))){
+                    try{ c = Class.forName(toC(in.getName()));}catch(Exception ex){}
+                    if(canInvoke(m.getParameterTypes(),m.getName(),c).size()!=1){
+                        throw new OOPTraitMissingImpl(m);
+                    }
+                }
+            }
+        }
+
     }
 
     //TODO: fill in here :
@@ -170,13 +242,13 @@ public class OOPTraitControl {
         HashSet<Class> visited = new HashSet<>();
         List<Class> newInterfaces = new LinkedList<>();
         try{ checkAllAbs(traitCollector);} catch(OOPTraitException e){throw e;}
-            while (!interfaces.isEmpty()){
+        while (!interfaces.isEmpty()){
             for (Class i : interfaces) {
                 try{ checkAllAbs(i);} catch(OOPTraitException e){throw e;}
                 if (!i.isAnnotationPresent(OOPTraitBehaviour.class)){
-
                     throw new OOPBadClass(i);
                 }
+                //System.out.println("here " + i.getName());
                 for(Method m : i.getDeclaredMethods()){
                     if (!m.isAnnotationPresent(OOPTraitMethod.class)){
                         throw new OOPBadClass(m);
@@ -196,14 +268,19 @@ public class OOPTraitControl {
             interfaces.addAll(newInterfaces);
             newInterfaces.clear();
         }
+        try{ checkAllMissing(traitCollector);} catch(OOPTraitException e){throw e;}
+        try{ checkAllConf();} catch(OOPTraitException e){throw e;}
     }
 
     public List<Method> canInvoke(Class[] parameters, String methodName, Class klass) {
         List<Method> retMethods  = new LinkedList<Method>();
         for (Method method : klass.getDeclaredMethods()) {
+
             if (!method.getName().equals(methodName)) {
                 continue;
             }
+            if(!(method.getAnnotation(OOPTraitMethod.class).modifier().equals(OOPTraitMethodModifier.INTER_IMPL))) continue;
+            //System.out.println("NOW CHECKING METHOD: " + method.getName() +" FROM CLASS " + method.getDeclaringClass().getName());
             Class<?>[] parameterTypes = method.getParameterTypes();
             int parameterTypesLength = 0;
             int parametersLength = 0;
@@ -211,7 +288,6 @@ public class OOPTraitControl {
             if(parameters!= null) parametersLength = parameters.length;
 
             if (parameterTypesLength != parametersLength) continue;
-
             boolean matches = true;
             for (int i = 0; i < parameterTypes.length; i++) {
                 if (!parameterTypes[i].isAssignableFrom(parameters[i])) {
@@ -220,6 +296,7 @@ public class OOPTraitControl {
                 }
             }
             if (matches) {
+                last_method = method;
                 retMethods.add(method);
             }
         }
@@ -265,7 +342,20 @@ public class OOPTraitControl {
         OOPTraitMethod annotation = null;
         try {
             method = traitCollector.getMethod(methodName, paramTypes);
-        } catch (Exception e){}
+        } catch (NoSuchMethodException e){
+            /*int tempMin = 1000;
+            Class[] tempParams = paramTypes.clone();
+            List<Method> matches = canInvoke(paramTypes, methodName, traitCollector);
+            for (Method m: matches){
+                int distt = distance(tempParams, m.getParameterTypes());
+                System.out.println("macthed method from class "+m.getDeclaringClass() + " DIST IS "+distt);
+                if(distt<tempMin){
+                    tempMin = distt;
+                    paramTypes = m.getParameterTypes();
+                    method = m;
+                }
+            }*/
+        }
         if(method != null) {
             annotation = method.getAnnotation(OOPTraitMethod.class);
         }
@@ -282,7 +372,19 @@ public class OOPTraitControl {
                 }
                 Method newImpl = classInst.getMethod(methodName, paramTypes);
                 return newImpl.invoke(instance, args);
-            } catch (Exception e) {
+            } catch(NoSuchMethodException e){
+                Class classInst = method.getAnnotation(OOPTraitConflictResolver.class).resolve();
+                Object instance;
+                if(instances.containsKey(classInst.getName())){
+                    instance = instances.get(classInst.getName());
+                } else {
+                    instance = instances.get(toT(classInst.getName()));
+                }
+                List<Method> matches = canInvoke(paramTypes, methodName, classInst);
+                //System.out.println("matches size is " + matches.size());
+                try{return matches.get(0).invoke(instance,args);}catch  (Exception ex) { ex.printStackTrace(); throw new OOPBadClass(method);}
+            }catch (Exception e) {
+                e.printStackTrace();
                 throw new OOPBadClass(method);
             }
         } else {
@@ -349,12 +451,8 @@ public class OOPTraitControl {
         min = Collections.min(distMap.keySet());
         LinkedList<Method> metList = distMap.get(min);
         if (metList.size() > 1) {
-        HashSet<Integer> levels = new HashSet<>();
-        for (Method me : metList) {
-            int newLevel = findLevel(me.getDeclaringClass());
-            if (levels.contains(newLevel)) throw new OOPTraitConflict(me);
-            levels.add(newLevel);
-        }
+            HashSet<Integer> levels = new HashSet<>();
+            throw new OOPTraitConflict(metList.getFirst());
         }
         toInvoke = metList.getFirst();
         classImpl = toInvoke.getDeclaringClass();
