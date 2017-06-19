@@ -83,9 +83,21 @@ public class OOPTraitControl {
 
     private int classDistance(Class source, Class dest){
         int delta = 0;
-        String destName = dest.getName();
-        for(Class c = source ; c.getName() != destName ; c = c.getSuperclass()){
+        List<Class> level = new LinkedList<>();
+        List<Class> nextLevel = new LinkedList<>();
+        level.add(source);
+        while(!level.contains(dest)){
             delta++;
+            for (Class c: level){
+                if(c.getInterfaces().length != 0){
+                    nextLevel.addAll(Arrays.asList(c.getInterfaces()));
+                    continue;
+                }
+                if(c.getSuperclass()!= null) nextLevel.add(c.getSuperclass());
+            }
+            level.clear();
+            level.addAll(nextLevel);
+            nextLevel.clear();
         }
         return delta;
     }
@@ -200,7 +212,6 @@ public class OOPTraitControl {
         Method[] missMethods = Arrays.stream(c.getDeclaredMethods()).
                 filter(me -> isMissing(me)).toArray(Method[]::new);
         for (Method me : missMethods){
-            System.out.println("in missing: "+me.getDeclaringClass());
             int num = findRealImpl(me);
             //if(num == 0) throw new OOPTraitMissingImpl(me);
             if(num > 1) throw new OOPTraitConflict(last_method);
@@ -269,7 +280,7 @@ public class OOPTraitControl {
             newInterfaces.clear();
         }
         try{ checkAllMissing(traitCollector);} catch(OOPTraitException e){throw e;}
-        try{ checkAllConf();} catch(OOPTraitException e){throw e;}
+        //try{ checkAllConf();} catch(OOPTraitException e){throw e;}
     }
 
     public List<Method> canInvoke(Class[] parameters, String methodName, Class klass) {
