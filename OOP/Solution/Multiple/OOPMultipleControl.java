@@ -5,6 +5,7 @@ import OOP.Provided.Multiple.OOPMultipleException;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import OOP.Provided.Multiple.OOPBadClass;
 import javafx.util.Pair;
@@ -219,7 +220,7 @@ public class OOPMultipleControl {
             HashSet<Integer> levels= new HashSet<>() ;
             for(Method met1 :metList){
                 int newLevel = findLevel(met1.getDeclaringClass());
-                if(levels.contains(newLevel)){
+                if(levels.contains(newLevel) && newLevel == Collections.min(levels)){
                     for(Method met:metList){
                         String inName = toI(met.getDeclaringClass().getName());
                         Class inClass = null;
